@@ -31,10 +31,9 @@
             flex-direction: column;
             align-items: center;
             overflow-x: hidden;
-            padding-bottom: 80px; /* Espacio para navbar */
+            padding-bottom: 80px;
         }
 
-        /* Glassmorphism General */
         .glass {
             background: var(--bg-card);
             backdrop-filter: blur(12px);
@@ -44,7 +43,6 @@
             box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
         }
 
-        /* Header */
         header {
             width: 100%;
             padding: 20px;
@@ -94,7 +92,6 @@
         #musicBtn:active { transform: scale(0.9); }
         #musicBtn svg { fill: var(--accent); width: 20px; height: 20px; }
 
-        /* Main Content */
         main {
             width: 100%;
             max-width: 600px;
@@ -110,11 +107,10 @@
 
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
-        /* Hourglass Pomodoro - Rediseñado */
         .hourglass-wrapper {
             position: relative;
-            width: 260px;
-            height: 420px;
+            width: 220px;
+            height: 400px;
             margin: 20px 0;
             cursor: pointer;
             display: flex;
@@ -181,7 +177,6 @@
             outline: none;
         }
 
-        /* Normal Pomodoro */
         .normal-pomodoro-circle {
             width: 250px;
             height: 250px;
@@ -197,21 +192,18 @@
             transition: transform 0.5s;
         }
 
-        /* Clock & Calendar */
         .salta-time { font-size: 3rem; font-weight: 900; color: var(--accent); margin: 20px 0; text-shadow: 0 0 15px rgba(255,190,0,0.4); }
         .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; width: 100%; margin-top: 20px; }
         .calendar-day { aspect-ratio: 1; display: flex; justify-content: center; align-items: center; font-size: 0.9rem; border-radius: 8px; background: rgba(255,255,255,0.05); }
         .calendar-day.today { background: var(--accent); color: var(--bg-dark); font-weight: bold; }
         .calendar-header { color: var(--accent); font-weight: bold; }
 
-        /* Tasks */
         .task-input-area { display: flex; gap: 10px; width: 100%; margin-bottom: 20px; margin-top: 20px;}
         .task-list { width: 100%; display: flex; flex-direction: column; gap: 10px; }
         .task-item { display: flex; justify-content: space-between; align-items: center; padding: 15px; background: rgba(255,255,255,0.05); border-radius: 12px; }
         .task-item.done span { text-decoration: line-through; opacity: 0.5; }
         .delete-task { color: #ff4444; cursor: pointer; background: none; border: none; font-size: 1.2rem; }
 
-        /* Music Player Modal */
         #musicModal {
             position: fixed;
             bottom: -100%;
@@ -244,7 +236,6 @@
         .playlist-item { padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); cursor: pointer; }
         .playlist-item:hover { color: var(--accent); }
 
-        /* Bottom Navbar */
         nav {
             position: fixed;
             bottom: 0;
@@ -276,7 +267,7 @@
         nav button svg { width: 24px; height: 24px; fill: currentColor; }
 
         @media (min-width: 768px) {
-            .hourglass-wrapper { width: 320px; height: 480px; }
+            .hourglass-wrapper { width: 280px; height: 480px; }
             .normal-pomodoro-circle { width: 350px; height: 350px; }
             nav button { font-size: 0.9rem; }
         }
@@ -296,10 +287,10 @@
 
     <main>
         <!-- VISTA 1: RELOJ DE ARENA LED -->
-        <section id="view-hourglass" class="view active">
+    <section id="view-hourglass" class="view active">
             <div class="hourglass-wrapper glass" id="hourglassBox">
                 <canvas id="hourglassCanvas"></canvas>
-                <div class="welcome-msg" id="welcomeMsg">¡Bienvenido! Toca el reloj para comenzar</div>
+                <div class="welcome-msg" id="welcomeMsg">¡Toca el reloj para comenzar!</div>
             </div>
             <div class="timer-controls">
                 <input type="number" class="time-input glass" id="timeSet" min="1" max="100" value="25">
@@ -414,274 +405,380 @@
             });
         });
 
-        // ============ RELOJ DE ARENA LED (CANVAS RE-DISEÑADO) ============
+        // ============ RELOJ DE ARENA LED — REDISEÑO COMPLETO ============
         const canvas = document.getElementById('hourglassCanvas');
         const ctx = canvas.getContext('2d');
         const welcomeMsg = document.getElementById('welcomeMsg');
-        
-        let W, H, centerX;
-        let topLEDs = [], bottomLEDs = [];
+
+        let W, H, CX;
         let totalSeconds = 25 * 60;
         let remainingSeconds = totalSeconds;
         let isRunning = false;
-        let intervalId = null;
+        let timerIntervalId = null;
+        let rafId = null;
 
-        // Geometría del vidrio
-        let maxW, neckW, topStart, topEnd, botStart, botEnd;
+        // Parámetros del reloj de arena
+        let topR, botR, neckR; // radios de referencia
+        let topCY, botCY;      // centros Y de cada bulbo
+        let neckY;             // centro Y del cuello
 
-        function setupCanvas() {
+        // Grillas de círculos
+        let topCircles = [];   // {cx, cy, r, baseY} — "base" Y final en bulbo inferior
+        let bottomCircles = [];
+
+        // Estado de animación de caída
+        // Cada círculo que "cae" tiene una posición Y animada
+        let fallingDots = []; // {fromX, fromY, toX, toY, progress, speed}
+        let lastTickTime = 0;
+
+        // ── Calcula cuántos círculos de radio r caben en una grilla hexagonal dentro del bulbo ──
+        function computeGeometry() {
             const dpr = window.devicePixelRatio || 1;
             const rect = canvas.getBoundingClientRect();
             W = rect.width;
             H = rect.height;
-            canvas.width = W * dpr;
+            canvas.width  = W * dpr;
             canvas.height = H * dpr;
             ctx.scale(dpr, dpr);
-            centerX = W / 2;
-            
-            // Definir dimensiones elegantes y separadas
-            maxW = W * 0.8; // Ancho máximo de los bulbos
-            neckW = W * 0.08; // Ancho del cuello (estrecho)
-            topStart = H * 0.05;
-            topEnd = H * 0.42; // Fin del bulbo superior
-            botStart = H * 0.58; // Inicio del bulbo inferior (DEJAMOS UN 16% DE ESPACIO VACÍO EN EL MEDIO)
-            botEnd = H * 0.95;
+            CX = W / 2;
+
+            // Bulbo superior: círculo de radio topR centrado en topCY
+            topR  = W * 0.36;
+            botR  = W * 0.36;
+            neckR = W * 0.055;
+
+            topCY  = H * 0.27;
+            botCY  = H * 0.73;
+            neckY  = H * 0.50; // centro del cuello
         }
 
-        // Funciones matemáticas para calcular el ancho del vidrio en una altura 'y'
-        function getHalfWidthTop(y) {
-            let dy = (y - topEnd) / (topStart - topEnd);
-            if (dy <= 0) return neckW / 2;
-            let t = 1 - Math.sqrt(dy);
-            let x_curve = (1-t)*(1-t)*(-maxW/2) + 2*(1-t)*t*(-maxW/4) + t*t*(-neckW/2);
-            return Math.abs(x_curve);
-        }
+        // ── Genera los círculos LED dentro de cada bulbo ──
+        // Usa grilla hexagonal compacta para llenar el bulbo (elipse simplificada = círculo)
+        function buildCircleGrid(centerX, centerY, bulbR, dotR) {
+            const dots = [];
+            const gap  = 1.5;          // espacio entre círculos (px)
+            const step = dotR * 2 + gap;
+            const rowH = step * Math.sqrt(3) / 2;
 
-        function getHalfWidthBot(y) {
-            let dy = (y - botStart) / (botEnd - botStart);
-            if (dy <= 0) return neckW / 2;
-            let t = Math.sqrt(dy); 
-            let x_curve = (1-t)*(1-t)*(neckW/2) + 2*(1-t)*t*(maxW/4) + t*t*(maxW/2);
-            return x_curve;
-        }
+            // número de filas para cubrir el bulbo
+            const rows = Math.ceil((bulbR * 2) / rowH) + 2;
 
-        function initLEDs() {
-            topLEDs = [];
-            bottomLEDs = [];
-            const step = W / 18; // Tamaño de los LEDs
-            
-            // Generar LEDs superiores
-            for (let y = topStart; y < topEnd; y += step) {
-                let hw = getHalfWidthTop(y) - step * 0.3;
-                for (let x = centerX - hw; x <= centerX + hw; x += step) {
-                    topLEDs.push({x, y});
+            for (let row = -rows; row <= rows; row++) {
+                const offset = (row % 2 === 0) ? 0 : step / 2;
+                const y = centerY + row * rowH;
+                const cols = Math.ceil((bulbR * 2) / step) + 2;
+                for (let col = -cols; col <= cols; col++) {
+                    const x = centerX + col * step + offset;
+                    // Distancia al centro del bulbo
+                    const dx = x - centerX;
+                    const dy = y - centerY;
+                    // El bulbo es un círculo: solo incluir si cabe dentro (con margen de dotR)
+                    if (Math.sqrt(dx*dx + dy*dy) + dotR < bulbR - 1) {
+                        dots.push({ cx: x, cy: y, r: dotR });
+                    }
                 }
             }
-            
-            // Generar LEDs inferiores
-            for (let y = botStart; y < botEnd; y += step) {
-                let hw = getHalfWidthBot(y) - step * 0.3;
-                for (let x = centerX - hw; x <= centerX + hw; x += step) {
-                    bottomLEDs.push({x, y});
-                }
-            }
-
-            // Ordenar para animación (vaciar desde el centro inferior, llenar desde el centro inferior)
-            topLEDs.sort((a, b) => {
-                if (Math.abs(a.y - b.y) > 1) return b.y - a.y; 
-                return Math.abs(a.x - centerX) - Math.abs(b.x - centerX);
-            });
-
-            bottomLEDs.sort((a, b) => {
-                if (Math.abs(a.y - b.y) > 1) return b.y - a.y; 
-                return Math.abs(a.x - centerX) - Math.abs(b.x - centerX);
-            });
+            return dots;
         }
 
-        function drawTopGlass() {
+        // Calcula el radio del dot en función del tamaño del canvas
+        function getDotRadius() {
+            // queremos ~6-8 columnas de dots en cada bulbo → r = bulbR / 7
+            return Math.max(4, Math.floor(W * 0.36 / 7.5));
+        }
+
+        function initCircles() {
+            const dotR = getDotRadius();
+            topCircles    = buildCircleGrid(CX, topCY, topR, dotR);
+            bottomCircles = buildCircleGrid(CX, botCY, botR, dotR);
+
+            // Ordenar topCircle
+topCircles.sort((a, b) => b.cy - a.cy || Math.abs(a.cx - CX) - Math.abs(b.cx - CX));
+
+            // Ordenar bottomCircles: de ARRIBA hacia ABAJO (se llenan desde arriba)
+            bottomCircles.sort((a, b) => a.cy - b.cy || Math.abs(a.cx - CX) - Math.abs(b.cx - CX));
+
+            fallingDots = [];
+        }
+
+        // ── Path del reloj de arena (forma exterior) ──
+        function buildHourglassPath() {
             ctx.beginPath();
-            ctx.moveTo(centerX - maxW/2, topStart);
-            ctx.quadraticCurveTo(centerX - maxW/4, topEnd, centerX - neckW/2, topEnd);
-            ctx.lineTo(centerX + neckW/2, topEnd);
-            ctx.quadraticCurveTo(centerX + maxW/4, topEnd, centerX + maxW/2, topStart);
+            // Partimos desde la parte superior izquierda del bulbo de arriba
+            // Usamos arcos para los bulbos y líneas para el cuello
+            // Bulbo superior (círculo)
+            const topLeft  = { x: CX - topR, y: topCY };
+            const topRight = { x: CX + topR, y: topCY };
+            // Cuello
+            const neckLeft  = { x: CX - neckR, y: neckY };
+            const neckRight = { x: CX + neckR, y: neckY };
+            // Bulbo inferior
+            const botLeft  = { x: CX - botR, y: botCY };
+            const botRight = { x: CX + botR, y: botCY };
+
+            // Dibujamos con bezier para suavizar el cuello
+            ctx.moveTo(topLeft.x, topCY);
+            // Arco superior izquierdo → cuello izquierdo
+            ctx.bezierCurveTo(
+                CX - topR,   topCY + topR * 0.9,
+                CX - neckR,  neckY - topR * 0.2,
+                neckLeft.x,  neckY
+            );
+            // Arco cuello izquierdo → bulbo inferior izquierdo
+            ctx.bezierCurveTo(
+                CX - neckR,  neckY + botR * 0.2,
+                CX - botR,   botCY - botR * 0.9,
+                botLeft.x,   botCY
+            );
+            // Semicírculo inferior
+            ctx.arc(CX, botCY, botR, Math.PI, 0, false);
+            // Arco bulbo inferior derecho → cuello derecho
+            ctx.bezierCurveTo(
+                CX + botR,   botCY - botR * 0.9,
+                CX + neckR,  neckY + botR * 0.2,
+                neckRight.x, neckY
+            );
+            // Arco cuello derecho → bulbo superior derecho
+            ctx.bezierCurveTo(
+                CX + neckR,  neckY - topR * 0.2,
+                CX + topR,   topCY + topR * 0.9,
+                topRight.x,  topCY
+            );
+            // Semicírculo superior
+            ctx.arc(CX, topCY, topR, 0, Math.PI, false);
             ctx.closePath();
         }
 
-        function drawBottomGlass() {
-            ctx.beginPath();
-            ctx.moveTo(centerX - neckW/2, botStart);
-            ctx.quadraticCurveTo(centerX - maxW/4, botStart, centerX - maxW/2, botEnd);
-            ctx.lineTo(centerX + maxW/2, botEnd);
-            ctx.quadraticCurveTo(centerX + maxW/4, botStart, centerX + neckW/2, botStart);
-            ctx.closePath();
-        }
-
-        function drawHourglass() {
+// ── Renderizado principal ──
+        function drawFrame(timestamp) {
             ctx.clearRect(0, 0, W, H);
-            const progress = remainingSeconds / totalSeconds;
-            
-            const topActiveCount = Math.floor(topLEDs.length * progress);
-            const bottomActiveCount = Math.floor(bottomLEDs.length * (1 - progress));
-            const step = W / 18;
 
-            // 1. Fondo del vidrio (Translúcido)
-            ctx.fillStyle = 'rgba(20, 20, 20, 0.6)';
-            drawTopGlass();
-            ctx.fill();
-            drawBottomGlass();
-            ctx.fill();
+            const progress = totalSeconds > 0 ? remainingSeconds / totalSeconds : 0;
+            const dotR = getDotRadius();
 
-            // 2. Dibujar LEDs dentro del vidrio (Usando recortes)
+            // Cuántos dots están activos en cada sección
+            const activeTop = Math.round(topCircles.length * progress);
+            const activeBot = topCircles.length - activeTop; // reflejamos en bottom
+
+            // ── 1. Fondo del reloj de arena ──
             ctx.save();
-            drawTopGlass();
+            buildHourglassPath();
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.85)';
+            ctx.fill();
+            ctx.restore();
+
+            // ── 2. Clip superior ──
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(CX, topCY, topR - 1, 0, Math.PI * 2);
             ctx.clip();
-            topLEDs.forEach((led, i) => {
-                let isActive = i >= topActiveCount;
-                if (isActive) {
-                    ctx.fillStyle = '#ffbe00';
-                    ctx.shadowColor = '#ffbe00';
-                    ctx.shadowBlur = 8;
-                    if (isRunning && Math.random() > 0.85) {
-                        ctx.fillStyle = '#ffffff'; // Brillo aleatorio LED
-                        ctx.shadowColor = '#ffffff';
-                    }
-                } else {
-                    ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
-                    ctx.shadowBlur = 0;
-                }
-                ctx.fillRect(led.x - step/2, led.y - step/2, step - 2, step - 2);
+
+            topCircles.forEach((dot, i) => {
+                const isActive = i < activeTop;
+                drawDot(dot.cx, dot.cy, dotR, isActive, timestamp);
             });
             ctx.restore();
 
+            // ── 3. Clip inferior ──
             ctx.save();
-            drawBottomGlass();
+            ctx.beginPath();
+            ctx.arc(CX, botCY, botR - 1, 0, Math.PI * 2);
             ctx.clip();
-            bottomLEDs.forEach((led, i) => {
-                let isActive = i < bottomActiveCount;
-                if (isActive) {
-                    ctx.fillStyle = '#ffbe00';
-                    ctx.shadowColor = '#ffbe00';
-                    ctx.shadowBlur = 8;
-                    if (isRunning && Math.random() > 0.85) {
-                        ctx.fillStyle = '#ffffff';
-                        ctx.shadowColor = '#ffffff';
-                    }
-                } else {
-                    ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
-                    ctx.shadowBlur = 0;
-                }
-                ctx.fillRect(led.x - step/2, led.y - step/2, step - 2, step - 2);
+
+            // Los dots inferiores activos son los que "ya cayeron" (activeBot)
+            // Se llenan desde arriba del bulbo inferior
+            bottomCircles.forEach((dot, i) => {
+                const isActive = i < activeBot;
+                drawDot(dot.cx, dot.cy, dotR, isActive, timestamp);
             });
             ctx.restore();
 
-            // 3. Arena cayendo (Línea central brillante)
-            if (isRunning && progress > 0 && progress < 1) {
-                ctx.fillStyle = '#ffbe00';
-                ctx.shadowColor = '#ffbe00';
-                ctx.shadowBlur = 10;
-                let sandStart = topEnd;
-                let sandEnd = botStart + (1 - progress) * (botEnd - botStart) * 0.8;
-                
-                for(let y = sandStart; y < sandEnd; y += step/2) {
-                    ctx.fillRect(centerX - step/4, y, step/2, step/2);
-                }
-                ctx.shadowBlur = 0;
+            // ── 4. Borde exterior del reloj ──
+            ctx.save();
+            buildHourglassPath();
+            ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+            ctx.lineWidth = 2.5;
+            ctx.shadowColor = 'rgba(255,190,0,0.15)';
+            ctx.shadowBlur = 12;
+            ctx.stroke();
+            ctx.restore();
+
+            // ── 5. Brillo lateral izquierdo (efecto 3D) ──
+            ctx.save();
+            ctx.strokeStyle = 'rgba(255,255,255,0.28)';
+            ctx.lineWidth = 1.5;
+            ctx.shadowBlur = 0;
+            ctx.beginPath();
+            ctx.moveTo(CX - topR + 6, topCY - topR * 0.7);
+            ctx.bezierCurveTo(
+                CX - topR + 4,  topCY + topR * 0.6,
+                CX - neckR - 4, neckY - topR * 0.15,
+                CX - neckR,     neckY
+            );
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(CX - neckR, neckY);
+            ctx.bezierCurveTo(
+                CX - neckR - 4, neckY + botR * 0.15,
+                CX - botR + 4,  botCY - botR * 0.6,
+                CX - botR + 6,  botCY + botR * 0.7
+            );
+            ctx.stroke();
+            ctx.restore();
+
+            // ── 6. Partícula cayendo por el cuello (cuando corre) ──
+            if (isRunning && progress > 0.01 && progress < 0.99) {
+                drawNeckParticle(timestamp, dotR);
             }
 
-            // 4. Borde del vidrio y Brillos
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-            ctx.lineWidth = 2;
-            ctx.shadowColor = 'rgba(255, 190, 0, 0.2)';
-            ctx.shadowBlur = 15;
-            drawTopGlass();
-            ctx.stroke();
-            drawBottomGlass();
-            ctx.stroke();
-            ctx.shadowBlur = 0;
-
-            // Brillo lateral (Efecto 3D)
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
-            ctx.lineWidth = 1.5;
-            ctx.beginPath();
-            ctx.moveTo(centerX - maxW/2 + 5, topStart + 5);
-            ctx.quadraticCurveTo(centerX - maxW/4, topEnd, centerX - neckW/2 - 2, topEnd - 2);
-            ctx.stroke();
-            
-            ctx.beginPath();
-            ctx.moveTo(centerX - neckW/2 - 2, botStart + 2);
-            ctx.quadraticCurveTo(centerX - maxW/4, botStart, centerX - maxW/2 + 5, botEnd - 5);
-            ctx.stroke();
+            // ── 7. Solicitar siguiente frame si está corriendo ──
+            if (isRunning) {
+                rafId = requestAnimationFrame(drawFrame);
+            }
         }
 
+        // Dibuja un dot LED individual
+        function drawDot(x, y, r, active, timestamp) {
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+
+            if (active) {
+                // Pulso sutil de brillo
+                const pulse = 0.85 + 0.15 * Math.sin(timestamp * 0.003 + x * 0.1);
+                ctx.fillStyle = `rgba(255,190,0,${pulse})`;
+                ctx.shadowColor = '#ffbe00';
+                ctx.shadowBlur  = r * 1.8;
+                ctx.fill();
+                // Punto de brillo central blanco
+                ctx.beginPath();
+                ctx.arc(x - r * 0.25, y - r * 0.25, r * 0.3, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255,255,255,${0.4 * pulse})`;
+                ctx.shadowBlur = 0;
+                ctx.fill();
+            } else {
+                // Dot apagado: borde oscuro + interior casi transparente
+                ctx.fillStyle = 'rgba(255,255,255,0.03)';
+                ctx.shadowBlur = 0;
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(80,80,80,0.5)';
+                ctx.lineWidth = 0.8;
+                ctx.beginPath();
+                ctx.arc(x, y, r, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+        }
+
+// Partícula que cae por el cuello
+        function drawNeckParticle(timestamp, dotR) {
+            const speed = 1200; // ms por ciclo
+            const t = (timestamp % speed) / speed; // 0..1
+            const py = neckY - dotR * 2 + t * dotR * 4;
+            const alpha = Math.sin(t * Math.PI);
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(CX, py, dotR * 0.55, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255,190,0,${alpha * 0.9})`;
+            ctx.shadowColor = '#ffbe00';
+            ctx.shadowBlur  = dotR * 2;
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // Renderiza un frame estático (sin RAF loop)
+        function drawStatic() {
+            cancelAnimationFrame(rafId);
+            rafId = null;
+            drawFrame(performance.now());
+        }
+
+        // ── Timer ──
         function tick() {
             if (!isRunning) return;
             remainingSeconds--;
             if (remainingSeconds <= 0) {
                 remainingSeconds = 0;
                 stopTimer();
-                alert("¡Tiempo terminado!");
+                drawStatic();
+                setTimeout(() => alert('¡Tiempo terminado! 🎉'), 50);
             }
-            drawHourglass();
         }
 
         function startTimer() {
-            const inputMin = parseInt(document.getElementById('timeSet').value) || 25;
-            if (inputMin > 100 || inputMin < 1) alert("El tiempo debe ser entre 1 y 100 minutos");
-            document.getElementById('timeSet').value = Math.min(100, Math.max(1, inputMin));
-            
-            if (remainingSeconds === 0 || remainingSeconds === totalSeconds) {
+            const inputMin = Math.min(100, Math.max(1, parseInt(document.getElementById('timeSet').value) || 25));
+            document.getElementById('timeSet').value = inputMin;
+
+            if (remainingSeconds <= 0 || remainingSeconds === totalSeconds) {
                 totalSeconds = inputMin * 60;
                 remainingSeconds = totalSeconds;
             }
-            
+
             isRunning = true;
             welcomeMsg.style.opacity = 0;
             document.getElementById('pauseBtn').innerHTML = '<svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
-            intervalId = setInterval(tick, 1000);
-            drawHourglass();
+            clearInterval(timerIntervalId);
+            timerIntervalId = setInterval(tick, 1000);
+
+            cancelAnimationFrame(rafId);
+            rafId = requestAnimationFrame(drawFrame);
         }
 
         function stopTimer() {
             isRunning = false;
-            clearInterval(intervalId);
+            clearInterval(timerIntervalId);
+            cancelAnimationFrame(rafId);
+            rafId = null;
             document.getElementById('pauseBtn').innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
+            drawStatic();
         }
 
         function flipTimer() {
             stopTimer();
-            const inputMin = parseInt(document.getElementById('timeSet').value) || 25;
+            const inputMin = Math.min(100, Math.max(1, parseInt(document.getElementById('timeSet').value) || 25));
             totalSeconds = inputMin * 60;
             remainingSeconds = totalSeconds;
             welcomeMsg.style.opacity = 1;
-            drawHourglass();
-            // Animación de voltear rápida y hermosa
-            canvas.style.transition = 'transform 0.5s cubic-bezier(0.4, 0, 0.2, 1)';
-            canvas.style.transform = 'rotate(180deg) scale(0.9)';
+
+            canvas.style.transition = 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
+            canvas.style.transform  = 'rotate(180deg) scale(0.88)';
             setTimeout(() => {
                 canvas.style.transform = 'rotate(360deg) scale(1)';
-                startTimer(); // Reinicia automáticamente al voltear
-            }, 500);
+                setTimeout(() => {
+                    canvas.style.transition = '';
+                    canvas.style.transform  = '';
+                    startTimer();
+                }, 620);
+            }, 600);
         }
 
-        document.getElementById('hourglassBox').addEventListener('click', () => {
-            if (!isRunning) {
-                startTimer();
-            }
+        // ── Eventos ──
+
+document.getElementById('hourglassBox').addEventListener('click', () => {
+            if (!isRunning) startTimer();
         });
         document.getElementById('flipBtn').addEventListener('click', flipTimer);
         document.getElementById('pauseBtn').addEventListener('click', () => {
-            if (isRunning) stopTimer();
-            else startTimer();
+            if (isRunning) stopTimer(); else startTimer();
         });
         document.getElementById('timeSet').addEventListener('change', () => {
             stopTimer();
-            const inputMin = parseInt(document.getElementById('timeSet').value) || 25;
-            document.getElementById('timeSet').value = Math.min(100, Math.max(1, inputMin));
+            const inputMin = Math.min(100, Math.max(1, parseInt(document.getElementById('timeSet').value) || 25));
+            document.getElementById('timeSet').value = inputMin;
             totalSeconds = inputMin * 60;
             remainingSeconds = totalSeconds;
             welcomeMsg.style.opacity = 1;
-            drawHourglass();
+            drawStatic();
         });
+
+        // ── Inicialización con ResizeObserver ──
+        function fullInit() {
+            computeGeometry();
+            initCircles();
+            drawStatic();
+        }
+
+        const ro = new ResizeObserver(() => fullInit());
+        ro.observe(canvas);
+        setTimeout(fullInit, 80);
 
         // ============ HORA Y CALENDARIO SALTA ============
         function updateSaltaClock() {
@@ -703,15 +800,12 @@
                 el.innerText = d;
                 grid.appendChild(el);
             });
-            
             const now = new Date(new Date().toLocaleString('en-US', {timeZone: 'America/Argentina/Salta'}));
             const year = now.getFullYear();
             const month = now.getMonth();
             const today = now.getDate();
-            
             const firstDay = new Date(year, month, 1).getDay();
             const daysInMonth = new Date(year, month + 1, 0).getDate();
-            
             for(let i=0; i<firstDay; i++) grid.innerHTML += '<div></div>';
             for(let i=1; i<=daysInMonth; i++) {
                 const el = document.createElement('div');
@@ -742,7 +836,7 @@
             } else {
                 normalInt = setInterval(() => {
                     normalSecs--;
-                    if (normalSecs <= 0) { clearInterval(normalInt); alert('Fin!'); normalSecs = 25*60; }
+                    if (normalSecs <= 0) { clearInterval(normalInt); alert('¡Fin!'); normalSecs = 25*60; }
                     updateNormalDisplay();
                 }, 1000);
                 document.getElementById('normalStartBtn').innerText = 'Pausar';
@@ -780,8 +874,7 @@
             }
         });
         renderTasks();
-
-        // ============ REPRODUCTOR YOUTUBE (PYTHON API BACKEND) ============
+        // ============ REPRODUCTOR YOUTUBE ============
         const musicBtn = document.getElementById('musicBtn');
         const musicModal = document.getElementById('musicModal');
         let clicks = 0;
@@ -789,10 +882,7 @@
             clicks++;
             if (clicks === 1) {
                 setTimeout(() => {
-                    if (clicks === 2) {
-                        musicModal.classList.add('open');
-                        initYTPlayer();
-                    }
+                    if (clicks === 2) { musicModal.classList.add('open'); initYTPlayer(); }
                     clicks = 0;
                 }, 300);
             }
@@ -820,7 +910,7 @@
 
         document.getElementById('searchBtn').addEventListener('click', async () => {
             const q = document.getElementById('ytSearch').value;
-            if(!q) return;
+            if (!q) return;
             try {
                 const res = await fetch(`http://localhost:5000/api/search?q=${encodeURIComponent(q)}`);
                 const videos = await res.json();
@@ -834,7 +924,7 @@
                     resultsDiv.appendChild(div);
                 });
             } catch (e) {
-                alert("Asegúrate de que el servidor Python esté corriendo para buscar música.");
+                alert("Asegurate de que el servidor Python esté corriendo para buscar música.");
             }
         });
 
@@ -844,7 +934,6 @@
             document.getElementById('nowPlayingTitle').textContent = title;
             document.getElementById('nowPlayingArtist').textContent = artist;
         }
-
         document.getElementById('playPauseBtn').addEventListener('click', () => {
             if (ytPlayer && ytPlayer.getPlayerState) {
                 if (ytPlayer.getPlayerState() === 1) ytPlayer.pauseVideo();
@@ -854,16 +943,6 @@
         document.getElementById('volumeSlider').addEventListener('input', (e) => {
             if (ytPlayer) ytPlayer.setVolume(e.target.value);
         });
-
-        // ============ INIT ============
-        window.addEventListener('resize', () => { setupCanvas(); initLEDs(); drawHourglass(); });
-        
-        // Inicialización asegurada al cargar
-        setTimeout(() => {
-            setupCanvas();
-            initLEDs();
-            drawHourglass();
-        }, 100);
     </script>
 </body>
 </html>
