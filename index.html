@@ -429,6 +429,7 @@
         // Estado de animación de caída
         // Cada círculo que "cae" tiene una posición Y animada
         let fallingDots = []; // {fromX, fromY, toX, toY, progress, speed}
+        let lastDropTime = 0;
         let lastTickTime = 0;
 
         // ── Calcula cuántos círculos de radio r caben en una grilla hexagonal dentro del bulbo ──
@@ -560,10 +561,19 @@ topCircles.sort((a, b) => b.cy - a.cy || Math.abs(a.cx - CX) - Math.abs(b.cx - C
             const activeTop = Math.round(topCircles.length * progress);
             const activeBot = topCircles.length - activeTop; // reflejamos en bottom
 
+            // ── 0. Sombra suave bajo el reloj ──
+            ctx.save();
+            ctx.fillStyle = 'rgba(0,0,0,0.18)';
+            ctx.filter = 'blur(10px)';
+            ctx.beginPath();
+            ctx.ellipse(CX, H - 24, topR * 0.6, 10, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+
             // ── 1. Fondo del reloj de arena ──
             ctx.save();
             buildHourglassPath();
-            ctx.fillStyle = 'rgba(10, 10, 10, 0.85)';
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.92)';
             ctx.fill();
             ctx.restore();
 
@@ -585,44 +595,28 @@ topCircles.sort((a, b) => b.cy - a.cy || Math.abs(a.cx - CX) - Math.abs(b.cx - C
             ctx.arc(CX, botCY, botR - 1, 0, Math.PI * 2);
             ctx.clip();
 
-            // Los dots inferiores activos son los que "ya cayeron" (activeBot)
-            // Se llenan desde arriba del bulbo inferior
             bottomCircles.forEach((dot, i) => {
                 const isActive = i < activeBot;
                 drawDot(dot.cx, dot.cy, dotR, isActive, timestamp);
             });
             ctx.restore();
 
-            // ── 4. Borde exterior del reloj ──
+            // ── 4. Animación de gotas LED cayendo ──
+            if (isRunning && timestamp - lastDropTime > 160) {
+                spawnFallingDot(activeTop, dotR);
+                lastDropTime = timestamp;
+            }
+            updateFallingDots(timestamp);
+            drawFallingDots(dotR);
+
+            // ── 5. Borde exterior del reloj ──
             ctx.save();
             buildHourglassPath();
-            ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-            ctx.lineWidth = 2.5;
-            ctx.shadowColor = 'rgba(255,190,0,0.15)';
-            ctx.shadowBlur = 12;
-            ctx.stroke();
-            ctx.restore();
-
-            // ── 5. Brillo lateral izquierdo (efecto 3D) ──
-            ctx.save();
-            ctx.strokeStyle = 'rgba(255,255,255,0.28)';
-            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 3;
+            ctx.lineJoin = 'round';
+            ctx.lineCap = 'round';
             ctx.shadowBlur = 0;
-            ctx.beginPath();
-            ctx.moveTo(CX - topR + 6, topCY - topR * 0.7);
-            ctx.bezierCurveTo(
-                CX - topR + 4,  topCY + topR * 0.6,
-                CX - neckR - 4, neckY - topR * 0.15,
-                CX - neckR,     neckY
-            );
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(CX - neckR, neckY);
-            ctx.bezierCurveTo(
-                CX - neckR - 4, neckY + botR * 0.15,
-                CX - botR + 4,  botCY - botR * 0.6,
-                CX - botR + 6,  botCY + botR * 0.7
-            );
             ctx.stroke();
             ctx.restore();
 
@@ -643,29 +637,58 @@ topCircles.sort((a, b) => b.cy - a.cy || Math.abs(a.cx - CX) - Math.abs(b.cx - C
             ctx.arc(x, y, r, 0, Math.PI * 2);
 
             if (active) {
-                // Pulso sutil de brillo
-                const pulse = 0.85 + 0.15 * Math.sin(timestamp * 0.003 + x * 0.1);
-                ctx.fillStyle = `rgba(255,190,0,${pulse})`;
-                ctx.shadowColor = '#ffbe00';
-                ctx.shadowBlur  = r * 1.8;
+                ctx.fillStyle = 'rgba(255,190,0,1)';
+                ctx.shadowColor = 'rgba(255,190,0,0.55)';
+                ctx.shadowBlur = r * 1.5;
                 ctx.fill();
-                // Punto de brillo central blanco
-                ctx.beginPath();
-                ctx.arc(x - r * 0.25, y - r * 0.25, r * 0.3, 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(255,255,255,${0.4 * pulse})`;
                 ctx.shadowBlur = 0;
-                ctx.fill();
             } else {
-                // Dot apagado: borde oscuro + interior casi transparente
-                ctx.fillStyle = 'rgba(255,255,255,0.03)';
+                ctx.fillStyle = 'rgba(255,255,255,0.08)';
                 ctx.shadowBlur = 0;
                 ctx.fill();
-                ctx.strokeStyle = 'rgba(80,80,80,0.5)';
-                ctx.lineWidth = 0.8;
-                ctx.beginPath();
-                ctx.arc(x, y, r, 0, Math.PI * 2);
-                ctx.stroke();
             }
+        }
+
+        // ── Gotas que caen solo por el centro del reloj ──
+        function spawnFallingDot(activeTop, dotR) {
+            if (activeTop <= 0 || fallingDots.length >= 3) return;
+            // Solo generar animación en el eje central, evitando lluvia lateral
+            fallingDots.push({
+                fromX: CX,
+                fromY: neckY - dotR * 2.5,
+                toX: CX,
+                toY: neckY + dotR * 2.5,
+                progress: 0,
+                speed: 0.003 + Math.random() * 0.002
+            });
+            // Limitamos la cantidad de gotas en vuelo
+            if (fallingDots.length > 3) {
+                fallingDots.shift();
+            }
+        }
+
+        function updateFallingDots(timestamp) {
+            fallingDots.forEach(dot => {
+                dot.progress = Math.min(1, dot.progress + dot.speed);
+            });
+            // Eliminar gotas terminadas
+            fallingDots = fallingDots.filter(dot => dot.progress < 1);
+        }
+
+        function drawFallingDots(dotR) {
+            fallingDots.forEach(dot => {
+                const ease = 1 - Math.pow(1 - dot.progress, 2);
+                const x = dot.fromX + (dot.toX - dot.fromX) * ease;
+                const y = dot.fromY + (dot.toY - dot.fromY) * ease;
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(x, y, dotR * 0.65, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255,190,0,0.95)';
+                ctx.shadowColor = 'rgba(255,190,0,0.35)';
+                ctx.shadowBlur = dotR * 1.5;
+                ctx.fill();
+                ctx.restore();
+            });
         }
 
 // Partícula que cae por el cuello
@@ -946,3 +969,4 @@ document.getElementById('hourglassBox').addEventListener('click', () => {
     </script>
 </body>
 </html>
+
