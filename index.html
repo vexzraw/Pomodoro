@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pomodoro LED Salta</title>
+    <link href="https://fonts.googleapis.com/css2?family=Sofia+Sans:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #121212;
+            --bg-card: rgba(30, 30, 30, 0.6);
+            --accent: #ffbe00;
+            --text: #ffffff;
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: Helvetica, Arial, sans-serif;
+            background-color: var(--bg-dark);
+            background-image: radial-gradient(circle at 50% 0%, #2a2a2a 0%, var(--bg-dark) 70%);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            overflow-x: hidden;
+            padding-bottom: 80px; /* Espacio para navbar */
+        }
+
+        /* Glassmorphism General */
+        .glass {
+            background: var(--bg-card);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+        }
+
+        /* Header */
+        header {
+            width: 100%;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: rgba(18, 18, 18, 0.8);
+            backdrop-filter: blur(10px);
+        }
+
+        .title-container {
+            display: flex;
+            align-items: center;
+            font-family: 'Sofia Sans', sans-serif;
+            font-weight: 900;
+            font-size: 1.5rem;
+        }
+
+        .title-prefix {
+            color: var(--text);
+            margin-right: 8px;
+        }
+
+        .title-name {
+            color: var(--accent);
+            outline: none;
+            border-bottom: 2px solid transparent;
+            transition: border-color 0.3s;
+            cursor: text;
+        }
+
+        .title-name:focus {
+            border-bottom-color: var(--accent);
+        }
+
+        #musicBtn {
+            background: var(--bg-card);
+            border: 1px solid var(--glass-border);
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: transform 0.2s, background 0.3s;
+        }
+
+        #musicBtn:active { transform: scale(0.9); }
+        #musicBtn svg { fill: var(--accent); width: 20px; height: 20px; }
+
+        /* Main Content */
+        main {
+            width: 100%;
+            max-width: 600px;
+            padding: 20px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .view { display: none; width: 100%; flex-direction: column; align-items: center; animation: fadeIn 0.5s ease; }
+        .view.active { display: flex; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Hourglass Pomodoro */
+        .hourglass-wrapper {
+            position: relative;
+            width: 220px;
+            height: 320px;
+            margin: 20px 0;
+            cursor: pointer;
+        }
+
+        #hourglassCanvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .welcome-msg {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            font-size: 0.9rem;
+            color: var(--text);
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 10px;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+
+        .timer-controls {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .btn {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text);
+            border: 1px solid var(--glass-border);
+            padding: 10px 20px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn:hover, .btn:active { background: var(--accent); color: var(--bg-dark); }
+        .btn svg { width: 18px; height: 18px; fill: currentColor; }
+
+        .time-input {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            padding: 10px;
+            border-radius: 12px;
+            width: 80px;
+            text-align: center;
+            font-size: 1rem;
+            outline: none;
+        }
+
+        /* Normal Pomodoro */
+        .normal-pomodoro-circle {
+            width: 250px;
+            height: 250px;
+            border-radius: 50%;
+            border: 10px solid rgba(255,255,255,0.1);
+            border-top: 10px solid var(--accent);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin: 20px 0;
+            transition: transform 0.5s;
+        }
+
+        /* Clock & Calendar */
+        .salta-time { font-size: 3rem; font-weight: 900; color: var(--accent); margin: 20px 0; text-shadow: 0 0 15px rgba(255,190,0,0.4); }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; width: 100%; margin-top: 20px; }
+        .calendar-day { aspect-ratio: 1; display: flex; justify-content: center; align-items: center; font-size: 0.9rem; border-radius: 8px; background: rgba(255,255,255,0.05); }
+        .calendar-day.today { background: var(--accent); color: var(--bg-dark); font-weight: bold; }
+        .calendar-header { color: var(--accent); font-weight: bold; }
+
+        /* Tasks */
+        .task-input-area { display: flex; gap: 10px; width: 100%; margin-bottom: 20px; }
+        .task-list { width: 100%; display: flex; flex-direction: column; gap: 10px; }
+        .task-item { display: flex; justify-content: space-between; align-items: center; padding: 15px; background: rgba(255,255,255,0.05); border-radius: 12px; }
+        .task-item.done span { text-decoration: line-through; opacity: 0.5; }
+        .delete-task { color: #ff4444; cursor: pointer; background: none; border: none; font-size: 1.2rem; }
+
+        /* Music Player Modal */
+        #musicModal {
+            position: fixed;
+            bottom: -100%;
+            left: 0;
+            width: 100%;
+            height: 80vh;
+            background: rgba(18, 18, 18, 0.95);
+            backdrop-filter: blur(20px);
+            border-top: 1px solid var(--accent);
+            border-top-left-radius: 30px;
+            border-top-right-radius: 30px;
+            z-index: 200;
+            transition: bottom 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+        }
+        #musicModal.open { bottom: 0; }
+        .modal-handle { width: 50px; height: 5px; background: var(--accent); border-radius: 5px; margin: 0 auto 20px; }
+        .search-area { display: flex; gap: 10px; margin-bottom: 20px; }
+        .search-area input { flex: 1; padding: 15px; border-radius: 12px; background: rgba(255,255,255,0.1); border: 1px solid var(--glass-border); color: var(--text); outline: none; }
+        .player-controls { display: flex; justify-content: center; align-items: center; gap: 20px; margin: 20px 0; }
+        .player-controls button { background: none; border: none; cursor: pointer; }
+        .player-controls svg { width: 32px; height: 32px; fill: var(--text); transition: fill 0.2s; }
+        .player-controls button:hover svg { fill: var(--accent); }
+        .play-btn svg { width: 48px; height: 48px; fill: var(--accent); }
+        .volume-slider { width: 100%; accent-color: var(--accent); margin-top: 10px; }
+        .now-playing { text-align: center; margin-bottom: 10px; min-height: 40px; }
+        .now-playing small { color: var(--accent); }
+        .playlist-item { padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); cursor: pointer; }
+        .playlist-item:hover { color: var(--accent); }
+
+        /* Bottom Navbar */
+        nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            display: flex;
+            justify-content: space-around;
+            padding: 15px 10px;
+            background: rgba(18, 18, 18, 0.9);
+            backdrop-filter: blur(15px);
+            border-top: 1px solid var(--glass-border);
+            z-index: 50;
+            overflow-x: auto;
+        }
+        nav button {
+            background: none;
+            border: none;
+            color: #666;
+            font-size: 0.7rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+            cursor: pointer;
+            transition: color 0.2s;
+            min-width: 60px;
+        }
+        nav button.active { color: var(--accent); }
+        nav button svg { width: 24px; height: 24px; fill: currentColor; }
+
+        @media (min-width: 768px) {
+            .hourglass-wrapper { width: 300px; height: 420px; }
+            .normal-pomodoro-circle { width: 350px; height: 350px; }
+            nav button { font-size: 0.9rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="title-container">
+            <span class="title-prefix">Pomodoro de</span>
+            <span class="title-name" contenteditable="true" id="clockName">Iván</span>
+        </div>
+        <button id="musicBtn" title="Doble clic para abrir música">
+            <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+        </button>
+    </header>
+
+    <main>
+        <!-- VISTA 1: RELOJ DE ARENA LED -->
+        <section id="view-hourglass" class="view active">
+            <div class="hourglass-wrapper glass" id="hourglassBox">
+                <canvas id="hourglassCanvas"></canvas>
+                <div class="welcome-msg" id="welcomeMsg">¡Bienvenido! Toca el reloj para comenzar</div>
+            </div>
+            <div class="timer-controls">
+                <input type="number" class="time-input glass" id="timeSet" min="1" max="100" value="25">
+                <button class="btn" id="flipBtn" title="Voltear y Reiniciar">
+                    <svg viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>
+                </button>
+                <button class="btn" id="pauseBtn" title="Pausar">
+                    <svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                </button>
+            </div>
+        </section>
+
+        <!-- VISTA 2: CALENDARIO SALTA -->
+        <section id="view-calendar" class="view">
+            <h2 class="salta-time" id="saltaDateText"></h2>
+            <div class="glass" style="padding: 20px; width: 100%;">
+                <div class="calendar-grid" id="calendarGrid"></div>
+            </div>
+        </section>
+
+        <!-- VISTA 3: HORA SALTA -->
+        <section id="view-clock" class="view">
+            <h2>Salta, Argentina</h2>
+            <div class="salta-time" id="saltaClockText">--:--:--</div>
+        </section>
+
+        <!-- VISTA 4: POMODORO NORMAL -->
+        <section id="view-normal" class="view">
+            <h2>Pomodoro Normal</h2>
+            <div class="normal-pomodoro-circle glass" id="normalCircle">
+                <span id="normalTime">25:00</span>
+            </div>
+            <div class="timer-controls">
+                <button class="btn" id="normalStartBtn">Iniciar</button>
+                <button class="btn" id="normalResetBtn">Reiniciar</button>
+            </div>
+        </section>
+
+        <!-- VISTA 5: TAREAS -->
+        <section id="view-tasks" class="view">
+            <h2>Lista de Tareas</h2>
+            <div class="task-input-area">
+                <input type="text" class="glass" id="taskInput" placeholder="Nueva tarea..." style="flex:1; padding: 15px; border-radius: 12px; color: white; outline:none;">
+                <button class="btn" id="addTaskBtn">Añadir</button>
+            </div>
+            <div class="task-list" id="taskList"></div>
+        </section>
+    </main>
+
+    <!-- REPRODUCTOR MÚSICA MODAL -->
+    <div id="musicModal">
+        <div class="modal-handle" id="closeModalBtn"></div>
+        <div class="search-area">
+            <input type="text" id="ytSearch" placeholder="Buscar música en YouTube...">
+            <button class="btn" id="searchBtn">Buscar</button>
+        </div>
+        <div class="now-playing">
+            <div id="nowPlayingTitle">No hay música reproduciéndose</div>
+            <small id="nowPlayingArtist"></small>
+        </div>
+        <div class="player-controls">
+            <button id="prevBtn"><svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
+            <button class="play-btn" id="playPauseBtn"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
+            <button id="nextBtn"><svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg></button>
+        </div>
+        <input type="range" class="volume-slider" id="volumeSlider" min="0" max="100" value="50">
+        <h3 style="margin: 20px 0 10px; color:var(--accent);">Resultados / Playlist</h3>
+        <div id="searchResults" style="flex:1; overflow-y: auto;"></div>
+    </div>
+
+    <!-- NAVBAR -->
+    <nav>
+        <button class="active" data-view="view-hourglass">
+            <svg viewBox="0 0 24 24"><path d="M6 2v6h.01L6 8.01 10 12l-4 4 .01.01H6V22h12v-5.99h-.01L18 16l-4-4 4-3.99-.01-.01H18V2H6zm10 14.5V20H8v-3.5l4-4 4 4zm-4-5l-4-4V4h8v3.5l-4 4z"/></svg>
+            Arena
+        </button>
+        <button data-view="view-calendar">
+            <svg viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z"/></svg>
+            Calendario
+        </button>
+        <button data-view="view-clock">
+            <svg viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
+            Hora
+        </button>
+        <button data-view="view-normal">
+            <svg viewBox="0 0 24 24"><path d="M15 1H9v2h6V1zm-4 13h2V8h-2v6zm8.03-6.61l1.42-1.42c-.43-.51-.9-.99-1.41-1.41l-1.42 1.42C16.07 4.74 14.12 4 12 4c-4.97 0-9 4.03-9 9s4.02 9 9 9 9-4.03 9-9c0-2.12-.74-4.07-1.97-5.61zM12 20c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>
+            Normal
+        </button>
+        <button data-view="view-tasks">
+            <svg viewBox="0 0 24 24"><path d="M3 5h18v2H3V5zm0 6h18v2H3v-2zm0 6h18v2H3v-2z"/></svg>
+            Tareas
+        </button>
+    </nav>
+
+    <script>
+        // ============ PERSISTENCIA Y NOMBRE ============
+        const clockNameEl = document.getElementById('clockName');
+        clockNameEl.textContent = localStorage.getItem('pomodoroName') || 'Iván';
+        clockNameEl.addEventListener('input', () => {
+            localStorage.setItem('pomodoroName', clockNameEl.textContent);
+        });
+
+        // ============ NAVEGACIÓN ============
+        const navButtons = document.querySelectorAll('nav button');
+        const views = document.querySelectorAll('.view');
+        navButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                navButtons.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                views.forEach(v => v.classList.remove('active'));
+                document.getElementById(btn.dataset.view).classList.add('active');
+            });
+        });
+
+        // ============ RELOJ DE ARENA LED (CANVAS) ============
+        const canvas = document.getElementById('hourglassCanvas');
+        const ctx = canvas.getContext('2d');
+        const welcomeMsg = document.getElementById('welcomeMsg');
+        let size = 300;
+        let cols = 20, rows = 30;
+        let topLEDs = [], bottomLEDs = [];
+        let totalSeconds = 25 * 60;
+        let remainingSeconds = totalSeconds;
+        let isRunning = false;
+        let intervalId = null;
+
+        function setupCanvas() {
+            const dpr = window.devicePixelRatio || 1;
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            ctx.scale(dpr, dpr);
+            size = rect.width;
+        }
+
+        function initLEDs() {
+            topLEDs = [];
+            bottomLEDs = [];
+            for (let r = 0; r < rows / 2; r++) {
+                for (let c = 0; c < cols; c++) {
+                    // Top bulb
+                    let radiusT = ((rows/2 - r) / (rows/2)) * (cols/2);
+                    if (Math.abs(c - (cols/2 - 0.5)) < radiusT) topLEDs.push({r, c});
+                    // Bottom bulb
+                    let radiusB = ((r + 1) / (rows/2)) * (cols/2);
+                    if (Math.abs(c - (cols/2 - 0.5)) < radiusB) bottomLEDs.push({r: r + rows/2, c});
+                }
+            }
+            // Ordenar para animación
+            topLEDs.sort((a, b) => b.r - a.r || Math.abs(a.c - cols/2) - Math.abs(b.c - cols/2)); // Vaciar desde abajo centro
+            bottomLEDs.sort((a, b) => b.r - a.r || Math.abs(a.c - cols/2) - Math.abs(b.c - cols/2)); // Llenar desde abajo centro
+        }
+
+        function drawHourglass() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const cellW = size / cols;
+            const cellH = size / rows;
+            const pad = 2;
+
+            const progress = remainingSeconds / totalSeconds;
+            const topActive = Math.floor(topLEDs.length * progress);
+            const bottomActive = bottomLEDs.length - topActive; // Lo que cayó
+
+            // Dibujar LEDs Top
+            topLEDs.forEach((led, i) => {
+                ctx.fillStyle = i < topActive ? '#ffbe00' : '#2a2a2a';
+                if(isRunning && i < topActive && Math.random() > 0.9) ctx.fillStyle = '#ffffff'; // Brillo LED
+                ctx.fillRect(led.c * cellW + pad, led.r * cellH + pad, cellW - pad*2, cellH - pad*2);
+            });
+
+            // Dibujar LEDs Bottom
+            bottomLEDs.forEach((led, i) => {
+                ctx.fillStyle = i >= bottomActive ? '#ffbe00' : '#2a2a2a';
+                if(isRunning && i >= bottomActive && Math.random() > 0.9) ctx.fillStyle = '#ffffff';
+                ctx.fillRect(led.c * cellW + pad, led.r * cellH + pad, cellW - pad*2, cellH - pad*2);
+            });
+
+            // Arena cayendo (línea central)
+            if (isRunning && progress > 0 && progress < 1) {
+                ctx.fillStyle = '#ffbe00';
+                ctx.shadowColor = '#ffbe00';
+                ctx.shadowBlur = 10;
+                ctx.fillRect((cols/2 - 0.5) * cellW, (rows/2) * cellH, cellW/2, cellH * 4);
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        function tick() {
+            if (!isRunning) return;
+            remainingSeconds--;
+            if (remainingSeconds <= 0) {
+                remainingSeconds = 0;
+                stopTimer();
+                alert("¡Tiempo terminado!");
+            }
+            drawHourglass();
+        }
+
+        function startTimer() {
+            const inputMin = parseInt(document.getElementById('timeSet').value) || 25;
+            if (inputMin > 100 || inputMin < 1) alert("El tiempo debe ser entre 1 y 100 minutos");
+            document.getElementById('timeSet').value = Math.min(100, Math.max(1, inputMin));
+            
+            if (remainingSeconds === 0 || remainingSeconds === totalSeconds) {
+                totalSeconds = inputMin * 60;
+                remainingSeconds = totalSeconds;
+            }
+            
+            isRunning = true;
+            welcomeMsg.style.opacity = 0;
+            document.getElementById('pauseBtn').innerHTML = '<svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
+            intervalId = setInterval(tick, 1000);
+            drawHourglass();
+        }
+
+        function stopTimer() {
+            isRunning = false;
+            clearInterval(intervalId);
+            document.getElementById('pauseBtn').innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
+        }
+
+        function flipTimer() {
+            stopTimer();
+            const inputMin = parseInt(document.getElementById('timeSet').value) || 25;
+            totalSeconds = inputMin * 60;
+            remainingSeconds = totalSeconds;
+            welcomeMsg.style.opacity = 1;
+            drawHourglass();
+            // Animación de voltear
+            canvas.style.transition = 'transform 0.5s';
+            canvas.style.transform = 'rotate(180deg)';
+            setTimeout(() => {
+                canvas.style.transform = 'rotate(0deg)';
+                startTimer(); // Reinicia automáticamente al voltear
+            }, 500);
+        }
+
+        document.getElementById('hourglassBox').addEventListener('click', () => {
+            if (!isRunning && remainingSeconds > 0) {
+                startTimer();
+            } else if (!isRunning) {
+                startTimer();
+            }
+        });
+        document.getElementById('flipBtn').addEventListener('click', flipTimer);
+        document.getElementById('pauseBtn').addEventListener('click', () => {
+            if (isRunning) stopTimer();
+            else startTimer();
+        });
+        document.getElementById('timeSet').addEventListener('change', () => {
+            stopTimer();
+            const inputMin = parseInt(document.getElementById('timeSet').value) || 25;
+            document.getElementById('timeSet').value = Math.min(100, Math.max(1, inputMin));
+            totalSeconds = inputMin * 60;
+            remainingSeconds = totalSeconds;
+            welcomeMsg.style.opacity = 1;
+            drawHourglass();
+        });
+
+        // ============ HORA Y CALENDARIO SALTA ============
+        function updateSaltaClock() {
+            const opts = { timeZone: 'America/Argentina/Salta', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
+            const dateOpts = { timeZone: 'America/Argentina/Salta', weekday: 'long', day: 'numeric', month: 'long' };
+            document.getElementById('saltaClockText').textContent = new Date().toLocaleTimeString('es-AR', opts);
+            document.getElementById('saltaDateText').textContent = new Date().toLocaleDateString('es-AR', dateOpts);
+        }
+        setInterval(updateSaltaClock, 1000);
+        updateSaltaClock();
+
+        function renderCalendar() {
+            const grid = document.getElementById('calendarGrid');
+            grid.innerHTML = '';
+            const days = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+            days.forEach(d => {
+                const el = document.createElement('div');
+                el.className = 'calendar-header calendar-day';
+                el.innerText = d;
+                grid.appendChild(el);
+            });
+            
+            // Ajustar a Salta
+            const now = new Date(new Date().toLocaleString('en-US', {timeZone: 'America/Argentina/Salta'}));
+            const year = now.getFullYear();
+            const month = now.getMonth();
+            const today = now.getDate();
+            
+            const firstDay = new Date(year, month, 1).getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            
+            for(let i=0; i<firstDay; i++) grid.innerHTML += '<div></div>';
+            for(let i=1; i<=daysInMonth; i++) {
+                const el = document.createElement('div');
+                el.className = 'calendar-day';
+                if (i === today) el.classList.add('today');
+                el.innerText = i;
+                grid.appendChild(el);
+            }
+        }
+        renderCalendar();
+
+        // ============ POMODORO NORMAL ============
+        let normalSecs = 25 * 60, normalRunning = false, normalInt = null;
+        const normalTimeEl = document.getElementById('normalTime');
+        const normalCircle = document.getElementById('normalCircle');
+
+        function updateNormalDisplay() {
+            const m = Math.floor(normalSecs / 60).toString().padStart(2, '0');
+            const s = (normalSecs % 60).toString().padStart(2, '0');
+            normalTimeEl.textContent = `${m}:${s}`;
+            const progress = normalSecs / (25 * 60);
+            normalCircle.style.transform = `rotate(${360 * (1 - progress)}deg)`;
+        }
+        document.getElementById('normalStartBtn').addEventListener('click', () => {
+            if (normalRunning) {
+                clearInterval(normalInt);
+                document.getElementById('normalStartBtn').innerText = 'Continuar';
+            } else {
+                normalInt = setInterval(() => {
+                    normalSecs--;
+                    if (normalSecs <= 0) { clearInterval(normalInt); alert('Fin!'); normalSecs = 25*60; }
+                    updateNormalDisplay();
+                }, 1000);
+                document.getElementById('normalStartBtn').innerText = 'Pausar';
+            }
+            normalRunning = !normalRunning;
+        });
+        document.getElementById('normalResetBtn').addEventListener('click', () => {
+            clearInterval(normalInt); normalRunning = false; normalSecs = 25 * 60;
+            document.getElementById('normalStartBtn').innerText = 'Iniciar';
+            updateNormalDisplay();
+        });
+        updateNormalDisplay();
+
+        // ============ TAREAS ============
+        const taskInput = document.getElementById('taskInput');
+        const taskList = document.getElementById('taskList');
+        let tasks = JSON.parse(localStorage.getItem('tasks')) || [];
+
+        function renderTasks() {
+            taskList.innerHTML = '';
+            tasks.forEach((t, i) => {
+                const div = document.createElement('div');
+                div.className = 'task-item' + (t.done ? ' done' : '');
+                div.innerHTML = `<span>${t.text}</span><button class="delete-task">✖</button>`;
+                div.querySelector('span').onclick = () => { tasks[i].done = !tasks[i].done; saveTasks(); };
+                div.querySelector('button').onclick = () => { tasks.splice(i, 1); saveTasks(); };
+                taskList.appendChild(div);
+            });
+        }
+        function saveTasks() { localStorage.setItem('tasks', JSON.stringify(tasks)); renderTasks(); }
+        document.getElementById('addTaskBtn').addEventListener('click', () => {
+            if (taskInput.value.trim() !== '') {
+                tasks.push({ text: taskInput.value, done: false });
+                taskInput.value = ''; saveTasks();
+            }
+        });
+        renderTasks();
+
+        // ============ REPRODUCTOR YOUTUBE (PYTHON API BACKEND) ============
+        const musicBtn = document.getElementById('musicBtn');
+        const musicModal = document.getElementById('musicModal');
+        let clicks = 0;
+        musicBtn.addEventListener('click', () => {
+            clicks++;
+            if (clicks === 1) {
+                setTimeout(() => {
+                    if (clicks === 2) {
+                        musicModal.classList.add('open');
+                        initYTPlayer();
+                    }
+                    clicks = 0;
+                }, 300);
+            }
+        });
+        document.getElementById('closeModalBtn').addEventListener('click', () => musicModal.classList.remove('open'));
+
+        // Nota: El reproductor usa el backend de Python para buscar. 
+        // Si el backend no corre, el usuario puede pegar links de YouTube.
+        let ytPlayer;
+        function initYTPlayer() {
+            if (!ytPlayer) {
+                const tag = document.createElement('script');
+                tag.src = "https://www.youtube.com/iframe_api";
+                document.body.appendChild(tag);
+            }
+        }
+        window.onYouTubeIframeAPIReady = () => {
+            ytPlayer = new YT.Player('ytHiddenPlayer', {
+                height: '0', width: '0',
+                events: { 'onReady': () => console.log('YT Ready') }
+            });
+        };
+        // Creamos un div oculto para el player de YT
+        const ytDiv = document.createElement('div');
+        ytDiv.id = 'ytHiddenPlayer';
+        ytDiv.style.display = 'none';
+        document.body.appendChild(ytDiv);
+
+        document.getElementById('searchBtn').addEventListener('click', async () => {
+            const q = document.getElementById('ytSearch').value;
+            if(!q) return;
+            // Intentamos llamar a nuestro backend en Python
+            try {
+                const res = await fetch(`http://localhost:5000/api/search?q=${encodeURIComponent(q)}`);
+                const videos = await res.json();
+                const resultsDiv = document.getElementById('searchResults');
+                resultsDiv.innerHTML = '';
+                videos.forEach(v => {
+                    const div = document.createElement('div');
+                    div.className = 'playlist-item';
+                    div.innerHTML = `<strong>${v.title}</strong><br><small>${v.artist}</small>`;
+                    div.onclick = () => playVideo(v.id, v.title, v.artist);
+                    resultsDiv.appendChild(div);
+                });
+            } catch (e) {
+                // Fallback si no hay backend: usa link directo
+                alert("Asegúrate de que el servidor Python esté corriendo para buscar música. También puedes pegar un ID de video de YouTube.");
+            }
+        });
+
+        function playVideo(id, title, artist) {
+            ytPlayer.loadVideoById(id);
+            ytPlayer.playVideo();
+            document.getElementById('nowPlayingTitle').textContent = title;
+            document.getElementById('nowPlayingArtist').textContent = artist;
+        }
+
+        document.getElementById('playPauseBtn').addEventListener('click', () => {
+            if (ytPlayer && ytPlayer.getPlayerState) {
+                if (ytPlayer.getPlayerState() === 1) ytPlayer.pauseVideo();
+                else ytPlayer.playVideo();
+            }
+        });
+        document.getElementById('volumeSlider').addEventListener('input', (e) => {
+            if (ytPlayer) ytPlayer.setVolume(e.target.value);
+        });
+
+        // ============ INIT ============
+        window.addEventListener('resize', () => { setupCanvas(); drawHourglass(); });
+        setupCanvas();
+        initLEDs();
+        drawHourglass();
+    </script>
+</body>
+</html>
