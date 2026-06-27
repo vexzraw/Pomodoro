@@ -230,11 +230,20 @@
         .player-controls svg { width: 32px; height: 32px; fill: var(--text); transition: fill 0.2s; }
         .player-controls button:hover svg { fill: var(--accent); }
         .play-btn svg { width: 48px; height: 48px; fill: var(--accent); }
+        .track-info { display: flex; justify-content: center; gap: 10px; color: var(--accent); font-size: 0.95rem; margin-bottom: 12px; }
+        .track-seek { width: 100%; margin-bottom: 15px; }
         .volume-slider { width: 100%; accent-color: var(--accent); margin-top: 10px; }
         .now-playing { text-align: center; margin-bottom: 10px; min-height: 40px; }
         .now-playing small { color: var(--accent); }
-        .playlist-item { padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); cursor: pointer; }
-        .playlist-item:hover { color: var(--accent); }
+        .search-results, .playlist-items { flex: 1; overflow-y: auto; }
+        .search-results { margin-bottom: 15px; }
+        .playlist-item, .search-item { padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+        .playlist-item:hover, .search-item:hover { color: var(--accent); }
+        .item-meta { flex: 1; min-width: 0; }
+        .item-meta strong { display: block; font-size: 0.95rem; }
+        .item-meta small { font-size: 0.82rem; color: rgba(255,255,255,0.75); }
+        .item-actions { display: flex; gap: 8px; }
+        .small-btn { padding: 6px 10px; font-size: 0.78rem; border-radius: 10px; }
 
         nav {
             position: fixed;
@@ -277,8 +286,8 @@
 
     <header>
         <div class="title-container">
-            <span class="title-prefix">Pomodoro de</span>
-            <span class="title-name" contenteditable="true" id="clockName">Iván</span>
+            <span class="title-prefix">POMODORO DE</span>
+            <span class="title-name" contenteditable="true" id="clockName">IVÁN</span>
         </div>
         <button id="musicBtn" title="Doble clic para abrir música">
             <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
@@ -351,14 +360,22 @@
             <div id="nowPlayingTitle">No hay música reproduciéndose</div>
             <small id="nowPlayingArtist"></small>
         </div>
+        <div class="track-info">
+            <span id="trackTime">00:00</span>
+            <span>/</span>
+            <span id="trackDuration">00:00</span>
+        </div>
+        <input type="range" class="track-seek" id="trackSeek" min="0" max="100" value="0">
         <div class="player-controls">
             <button id="prevBtn"><svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
             <button class="play-btn" id="playPauseBtn"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
             <button id="nextBtn"><svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg></button>
         </div>
         <input type="range" class="volume-slider" id="volumeSlider" min="0" max="100" value="50">
-        <h3 style="margin: 20px 0 10px; color:var(--accent);">Resultados / Playlist</h3>
-        <div id="searchResults" style="flex:1; overflow-y: auto;"></div>
+        <h3 style="margin: 20px 0 10px; color:var(--accent);">Resultados</h3>
+        <div id="searchResults" class="search-results"></div>
+        <h3 style="margin: 10px 0 10px; color:var(--accent);">Playlist</h3>
+        <div id="playlistItems" class="playlist-items"></div>
     </div>
 
     <!-- NAVBAR -->
@@ -388,7 +405,7 @@
     <script>
         // ============ PERSISTENCIA Y NOMBRE ============
         const clockNameEl = document.getElementById('clockName');
-        clockNameEl.textContent = localStorage.getItem('pomodoroName') || 'Iván';
+        clockNameEl.textContent = localStorage.getItem('pomodoroName') || 'IVÁN';
         clockNameEl.addEventListener('input', () => {
             localStorage.setItem('pomodoroName', clockNameEl.textContent);
         });
@@ -900,7 +917,19 @@ document.getElementById('hourglassBox').addEventListener('click', () => {
         // ============ REPRODUCTOR YOUTUBE ============
         const musicBtn = document.getElementById('musicBtn');
         const musicModal = document.getElementById('musicModal');
+        const trackTimeEl = document.getElementById('trackTime');
+        const trackDurationEl = document.getElementById('trackDuration');
+        const trackSeek = document.getElementById('trackSeek');
+        const playlistItemsEl = document.getElementById('playlistItems');
+        const searchResultsEl = document.getElementById('searchResults');
+
         let clicks = 0;
+        let ytPlayer;
+        let ytReady = false;
+        let playlist = JSON.parse(localStorage.getItem('musicPlaylist')) || [];
+        let currentTrackIndex = -1;
+        let progressTimer = null;
+
         musicBtn.addEventListener('click', () => {
             clicks++;
             if (clicks === 1) {
@@ -910,9 +939,20 @@ document.getElementById('hourglassBox').addEventListener('click', () => {
                 }, 300);
             }
         });
-        document.getElementById('closeModalBtn').addEventListener('click', () => musicModal.classList.remove('open'));
 
-        let ytPlayer;
+        function closeMusicModal() {
+            musicModal.classList.remove('open');
+        }
+
+        document.getElementById('closeModalBtn').addEventListener('click', closeMusicModal);
+
+        document.addEventListener('click', (event) => {
+            if (!musicModal.classList.contains('open')) return;
+            if (!musicModal.contains(event.target) && event.target !== musicBtn) {
+                closeMusicModal();
+            }
+        });
+
         function initYTPlayer() {
             if (!ytPlayer) {
                 const tag = document.createElement('script');
@@ -923,13 +963,158 @@ document.getElementById('hourglassBox').addEventListener('click', () => {
         window.onYouTubeIframeAPIReady = () => {
             ytPlayer = new YT.Player('ytHiddenPlayer', {
                 height: '0', width: '0',
-                events: { 'onReady': () => console.log('YT Ready') }
+                events: {
+                    'onReady': () => {
+                        ytReady = true;
+                        renderPlaylist();
+                        updatePlayPauseIcon(false);
+                        startProgressTimer();
+                    },
+                    'onStateChange': onPlayerStateChange
+                }
             });
         };
         const ytDiv = document.createElement('div');
         ytDiv.id = 'ytHiddenPlayer';
         ytDiv.style.display = 'none';
         document.body.appendChild(ytDiv);
+
+        function formatTime(seconds) {
+            seconds = Math.max(0, Math.round(seconds || 0));
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = seconds % 60;
+            return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        }
+
+        function renderPlaylist() {
+            playlistItemsEl.innerHTML = '';
+            playlist.forEach((track, index) => {
+                const item = document.createElement('div');
+                item.className = 'playlist-item';
+                item.innerHTML = `
+                    <div class="item-meta">
+                        <strong>${track.title}</strong>
+                        <small>${track.artist}</small>
+                    </div>
+                    <div class="item-actions">
+                        <button class="btn small-btn" type="button">▶</button>
+                        <button class="btn small-btn" type="button">✕</button>
+                    </div>
+                `;
+                item.querySelector('.item-actions button:nth-child(1)').addEventListener('click', () => {
+                    playPlaylistTrack(index);
+                });
+                item.querySelector('.item-actions button:nth-child(2)').addEventListener('click', () => {
+                    playlist.splice(index, 1);
+                    if (currentTrackIndex === index) currentTrackIndex = -1;
+                    if (currentTrackIndex > index) currentTrackIndex--;
+                    savePlaylist();
+                });
+                playlistItemsEl.appendChild(item);
+            });
+            localStorage.setItem('musicPlaylist', JSON.stringify(playlist));
+        }
+
+        function savePlaylist() {
+            localStorage.setItem('musicPlaylist', JSON.stringify(playlist));
+            renderPlaylist();
+        }
+
+        function onPlayerStateChange(event) {
+            if (event.data === YT.PlayerState.PLAYING) {
+                updatePlayPauseIcon(true);
+                startProgressTimer();
+            } else {
+                updatePlayPauseIcon(false);
+            }
+            if (event.data === YT.PlayerState.ENDED) {
+                playNextTrack();
+            }
+        }
+
+        function updatePlayPauseIcon(isPlaying) {
+            const btn = document.getElementById('playPauseBtn');
+            btn.innerHTML = isPlaying
+                ? '<svg viewBox="0 0 24 24"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>'
+                : '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
+        }
+
+        function startProgressTimer() {
+            if (progressTimer) return;
+            progressTimer = setInterval(updateTrackProgress, 500);
+        }
+
+        function stopProgressTimer() {
+            clearInterval(progressTimer);
+            progressTimer = null;
+        }
+
+        function updateTrackProgress() {
+            if (!ytReady || !ytPlayer || typeof ytPlayer.getDuration !== 'function') return;
+            const duration = ytPlayer.getDuration();
+            const current = ytPlayer.getCurrentTime();
+            trackDurationEl.textContent = duration > 0 ? formatTime(duration) : '00:00';
+            trackTimeEl.textContent = formatTime(current);
+            if (duration > 0) {
+                trackSeek.value = Math.min(100, Math.round((current / duration) * 100));
+            }
+        }
+
+        function playPlaylistTrack(index) {
+            if (index < 0 || index >= playlist.length) return;
+            currentTrackIndex = index;
+            const track = playlist[index];
+            playVideo(track.id, track.title, track.artist, index);
+        }
+
+        function playNextTrack() {
+            if (playlist.length === 0) return;
+            const nextIndex = currentTrackIndex + 1 < playlist.length ? currentTrackIndex + 1 : 0;
+            playPlaylistTrack(nextIndex);
+        }
+
+        function playPreviousTrack() {
+            if (playlist.length === 0) return;
+            const prevIndex = currentTrackIndex - 1 >= 0 ? currentTrackIndex - 1 : playlist.length - 1;
+            playPlaylistTrack(prevIndex);
+        }
+
+        document.getElementById('prevBtn').addEventListener('click', playPreviousTrack);
+        document.getElementById('nextBtn').addEventListener('click', playNextTrack);
+
+        trackSeek.addEventListener('input', () => {
+            if (!ytReady || !ytPlayer || typeof ytPlayer.getDuration !== 'function') return;
+            const duration = ytPlayer.getDuration();
+            if (duration > 0) {
+                const seekTime = (trackSeek.value / 100) * duration;
+                ytPlayer.seekTo(seekTime, true);
+                trackTimeEl.textContent = formatTime(seekTime);
+            }
+        });
+
+        document.getElementById('playPauseBtn').addEventListener('click', () => {
+            if (!ytReady || !ytPlayer || typeof ytPlayer.getPlayerState !== 'function') return;
+            const state = ytPlayer.getPlayerState();
+            if (state === YT.PlayerState.PLAYING) {
+                ytPlayer.pauseVideo();
+            } else if (currentTrackIndex >= 0) {
+                ytPlayer.playVideo();
+            } else if (playlist.length > 0) {
+                playPlaylistTrack(0);
+            }
+        });
+
+        document.getElementById('volumeSlider').addEventListener('input', (e) => {
+            if (ytPlayer && ytReady) ytPlayer.setVolume(e.target.value);
+        });
+
+        function addTrackToPlaylist(track) {
+            if (!playlist.some(item => item.id === track.id)) {
+                playlist.push(track);
+                savePlaylist();
+            }
+        }
 
         document.getElementById('searchBtn').addEventListener('click', async () => {
             const q = document.getElementById('ytSearch').value;
@@ -941,9 +1126,24 @@ document.getElementById('hourglassBox').addEventListener('click', () => {
                 resultsDiv.innerHTML = '';
                 videos.forEach(v => {
                     const div = document.createElement('div');
-                    div.className = 'playlist-item';
-                    div.innerHTML = `<strong>${v.title}</strong><br><small>${v.artist}</small>`;
-                    div.onclick = () => playVideo(v.id, v.title, v.artist);
+                    div.className = 'search-item';
+                    div.innerHTML = `
+                        <div class="item-meta">
+                            <strong>${v.title}</strong>
+                            <small>${v.artist}</small>
+                        </div>
+                        <div class="item-actions">
+                            <button class="btn small-btn" type="button">Play</button>
+                            <button class="btn small-btn" type="button">Add</button>
+                        </div>
+                    `;
+                    div.querySelector('.item-actions button:nth-child(1)').addEventListener('click', () => {
+                        addTrackToPlaylist(v);
+                        playPlaylistTrack(playlist.findIndex(item => item.id === v.id));
+                    });
+                    div.querySelector('.item-actions button:nth-child(2)').addEventListener('click', () => {
+                        addTrackToPlaylist(v);
+                    });
                     resultsDiv.appendChild(div);
                 });
             } catch (e) {
@@ -951,21 +1151,15 @@ document.getElementById('hourglassBox').addEventListener('click', () => {
             }
         });
 
-        function playVideo(id, title, artist) {
+        function playVideo(id, title, artist, index = -1) {
+            if (!ytReady || !ytPlayer) return;
+            if (index >= 0) currentTrackIndex = index;
             ytPlayer.loadVideoById(id);
             ytPlayer.playVideo();
             document.getElementById('nowPlayingTitle').textContent = title;
             document.getElementById('nowPlayingArtist').textContent = artist;
+            updatePlayPauseIcon(true);
         }
-        document.getElementById('playPauseBtn').addEventListener('click', () => {
-            if (ytPlayer && ytPlayer.getPlayerState) {
-                if (ytPlayer.getPlayerState() === 1) ytPlayer.pauseVideo();
-                else ytPlayer.playVideo();
-            }
-        });
-        document.getElementById('volumeSlider').addEventListener('input', (e) => {
-            if (ytPlayer) ytPlayer.setVolume(e.target.value);
-        });
     </script>
 </body>
 </html>
